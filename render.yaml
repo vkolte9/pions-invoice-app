@@ -1,24 +1,21 @@
 services:
   - type: web
     name: pions-invoice-app
-    env: python
+    env: docker
     plan: free
-    region: oregon  # you can change to closer region if needed
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    dockerfilePath: ./Dockerfile
     envVars:
       - key: FLASK_ENV
         value: production
       - key: PORT
         value: 5000
-      # Database Settings (fill in values on Render Dashboard or here)
-      - key: SQL_SERVER_DRIVER
-        value: "{ODBC Driver 17 for SQL Server}"
-      - key: SQL_SERVER_HOST
-        value: "your-sql-server-host"   # e.g. mydb.database.windows.net
-      - key: SQL_SERVER_DB
-        value: "InvoiceDB"
-      - key: SQL_SERVER_USER
-        value: "your-username"
-      - key: SQL_SERVER_PASS
-        value: "your-password"
+      - key: PG_HOST
+        value: dpg-d2k17gbe5dus738lv6s0-a.oregon-postgres.render.com
+      - key: PG_DB
+        value: invoice_db_diz8
+      - key: PG_USER
+        value: invoice_db_diz8_user
+      - key: PG_PASS
+        sync: false   # don’t commit password, set manually in Render Dashboard
+      - key: PG_PORT
+        value: 5432

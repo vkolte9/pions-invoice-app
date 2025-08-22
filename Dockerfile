@@ -1,16 +1,30 @@
+# Use official lightweight Python image
 FROM python:3.11-slim
 
-# Install dependencies and MS SQL ODBC driver
-RUN apt-get update && apt-get install -y curl gnupg apt-transport-https unixodbc unixodbc-dev \
- && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
- && curl https://packages.microsoft.com/config/debian/12/prod.list > /etc/apt/sources.list.d/mssql-release.list \
- && apt-get update && ACCEPT_EULA=Y apt-get install -y msodbcsql17 \
- && rm -rf /var/lib/apt/lists/*
-
+# Set work directory
 WORKDIR /app
-COPY . /app
 
-RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+# Install system dependencies required by psycopg2 & reportlab
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    build-essential \
+    libfreetype6-dev \
+    libjpeg-dev \
+    zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-ENV PORT=10000
-CMD gunicorn app:app --bind 0.0.0.0:$PORT --workers 2
+# Copy requirements first (for caching)
+COPY requirements.txt .
+
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy app source
+COPY . .
+
+# Expose port
+EXPOSE 5000
+
+# Start app
+CMD ["python", "app.py"]
