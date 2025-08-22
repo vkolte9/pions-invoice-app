@@ -1,10 +1,7 @@
 from flask import Flask, render_template, request, send_file
 import io
-import pyodbc
 import os
-import json
-import math
-from datetime import datetime
+import psycopg2
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import mm
@@ -13,13 +10,87 @@ from reportlab.lib.colors import HexColor, black
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from PyPDF2 import PdfMerger
 from num2words import num2words
+from dotenv import load_dotenv
+import math
+from datetime import datetime
+
+# ==============================
+# Load Environment Variables
+# ==============================
+load_dotenv()
+
+# Flask App
+app = Flask(__name__)
+
+# === Config ===
+TEMP_FOLDER = "temp_invoices"
+os.makedirs(TEMP_FOLDER, exist_ok=True)
+
+
+# --- PostgreSQL Connection ---
+def get_db_connection():
+    return psycopg2.connect(
+        host=os.getenv("PG_HOST", "dpg-d2k17gbe5dus738lv6s0-a.oregon-postgres.render.com"),
+        database=os.getenv("PG_DB", "invoice_db_diz8"),
+        user=os.getenv("PG_USER", "invoice_db_diz8_user"),
+        password=os.getenv("PG_PASS"),
+        port=os.getenv("PG_PORT", 5432)
+    )
+
+
+# --- Initialize Database ---
+def init_db():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS invoices (
+            id SERIAL PRIMARY KEY,
+            invoice_no VARCHAR(50) UNIQUE NOT NULL,
+            invoice_date VARCHAR(50),
+            state VARCHAR(50),
+            state_code VARCHAR(50),
+            delivery_challan_no VARCHAR(50),
+            delivery_challan_date VARCHAR(50),
+            transport_mode VARCHAR(50),
+            vehicle_no VARCHAR(50),
+            date_of_supply VARCHAR(50),
+            place_of_supply VARCHAR(50),
+            insurance_policy_no VARCHAR(50),
+            insurance_policy_date VARCHAR(50),
+            vendor_code VARCHAR(50),
+            po_no VARCHAR(50),
+            po_date VARCHAR(50),
+            invoiced_to_address TEXT,
+            invoiced_state VARCHAR(50),
+            invoiced_state_code VARCHAR(50),
+            invoiced_gstin VARCHAR(50),
+            consigned_to_address TEXT,
+            consigned_state VARCHAR(50),
+            consigned_state_code VARCHAR(50),
+            consigned_gstin VARCHAR(50)
+        )
+    ''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS invoice_items (
+            id SERIAL PRIMARY KEY,
+            invoice_id INT NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+            item_desc TEXT,
+            item_hsn VARCHAR(50),
+            item_qty FLOAT,
+            item_rate FLOAT,
+            item_cgst FLOAT,
+            item_sgst FLOAT,
+            item_igst FLOAT
+        )
+    ''')
+    conn.commit()
+    cur.close()
+    conn.close()
+
+init_db()
+
 
 # === Full PDF Generator Functions ===
-
-# ---------- Config ----------
-TEMP_FOLDER = "temp_invoices"
-DATA_FILE = "last_invoice_data.json"
-os.makedirs(TEMP_FOLDER, exist_ok=True)
 
 
 # ---------- Helpers ----------
@@ -638,98 +709,6 @@ def generate_and_merge_all(output_file=None, items=None, invoice_data=None):
         return output_file
 
 
-# === Flask App ===
-app = Flask(__name__)
-app.config['STATIC_FOLDER'] = 'static'
-
-# --- MS SQL Server Database Configuration ---
-DATABASE_CONFIG = {
-    'driver': os.environ.get('SQL_SERVER_DRIVER', '{ODBC Driver 17 for SQL Server}'),
-    'server': os.environ.get('SQL_SERVER_HOST', r'DESKTOP-BD5R1LA\SQLEXPRESS'),  # fallback to your local SQL Express
-    'database': os.environ.get('SQL_SERVER_DB', 'InvoiceDB'),
-    'uid': os.environ.get('SQL_SERVER_USER', 'PionsTech'),
-    'pwd': os.environ.get('SQL_SERVER_PASS', 'Pions@1234')
-}
-
-
-def get_db_connection():
-    conn_str = (
-        f"DRIVER={DATABASE_CONFIG['driver']};"
-        f"SERVER={DATABASE_CONFIG['server']};"
-        f"DATABASE={DATABASE_CONFIG['database']};"
-        f"UID={DATABASE_CONFIG['uid']};"
-        f"PWD={DATABASE_CONFIG['pwd']}"
-    )
-    return pyodbc.connect(conn_str)
-
-
-# --- Initialize Database ---
-def init_db():
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        cursor.execute('''
-            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='invoices' AND xtype='U')
-            CREATE TABLE invoices (
-                id INT PRIMARY KEY IDENTITY(1,1),
-                invoice_no NVARCHAR(50) UNIQUE NOT NULL,
-                invoice_date NVARCHAR(50),
-                state NVARCHAR(50),
-                state_code NVARCHAR(50),
-                delivery_challan_no NVARCHAR(50),
-                delivery_challan_date NVARCHAR(50),
-                transport_mode NVARCHAR(50),
-                vehicle_no NVARCHAR(50),
-                date_of_supply NVARCHAR(50),
-                place_of_supply NVARCHAR(50),
-                insurance_policy_no NVARCHAR(50),
-                insurance_policy_date NVARCHAR(50),
-                vendor_code NVARCHAR(50),
-                po_no NVARCHAR(50),
-                po_date NVARCHAR(50),
-                invoiced_to_address NVARCHAR(MAX),
-                invoiced_state NVARCHAR(50),
-                invoiced_state_code NVARCHAR(50),
-                invoiced_gstin NVARCHAR(50),
-                consigned_to_address NVARCHAR(MAX),
-                consigned_state NVARCHAR(50),
-                consigned_state_code NVARCHAR(50),
-                consigned_gstin NVARCHAR(50)
-            )
-        ''')
-
-        cursor.execute('''
-            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='invoice_items' AND xtype='U')
-            CREATE TABLE invoice_items (
-                id INT PRIMARY KEY IDENTITY(1,1),
-                invoice_id INT NOT NULL,
-                item_desc NVARCHAR(MAX),
-                item_hsn NVARCHAR(50),
-                item_qty FLOAT,
-                item_rate FLOAT,
-                item_cgst FLOAT,
-                item_sgst FLOAT,
-                item_igst FLOAT,
-                FOREIGN KEY(invoice_id) REFERENCES invoices(id)
-            )
-        ''')
-
-        conn.commit()
-    except pyodbc.Error:
-        pass
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-
-
-init_db()
-
-
 # === Routes ===
 @app.route('/')
 def index():
@@ -742,9 +721,9 @@ def generate():
     try:
         data = request.form
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cur = conn.cursor()
 
-        cursor.execute('''
+        cur.execute('''
             INSERT INTO invoices (
                 invoice_no, invoice_date, state, state_code, delivery_challan_no,
                 delivery_challan_date, transport_mode, vehicle_no, date_of_supply,
@@ -752,9 +731,8 @@ def generate():
                 vendor_code, po_no, po_date, invoiced_to_address, invoiced_state,
                 invoiced_state_code, invoiced_gstin, consigned_to_address,
                 consigned_state, consigned_state_code, consigned_gstin
-            )
-            OUTPUT INSERTED.id
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            RETURNING id
         ''', (
             data.get('invoice_no'), data.get('invoice_date'), data.get('state'), data.get('state_code'),
             data.get('delivery_challan_no'), data.get('delivery_challan_date'), data.get('transport_mode'),
@@ -765,7 +743,7 @@ def generate():
             data.get('consigned_state'), data.get('consigned_state_code'), data.get('consigned_gstin')
         ))
 
-        invoice_id = cursor.fetchone()[0]
+        invoice_id = cur.fetchone()[0]
 
         item_descs = request.form.getlist("item_desc[]")
         item_hsns = request.form.getlist("item_hsn[]")
@@ -781,19 +759,18 @@ def generate():
                 item = {
                     'item_desc': item_descs[i],
                     'item_hsn': item_hsns[i],
-                    'item_qty': safe_float(item_qtys[i]),
-                    'item_rate': safe_float(item_rates[i]),
-                    'item_cgst': safe_float(item_cgsts[i]),
-                    'item_sgst': safe_float(item_sgsts[i]),
-                    'item_igst': safe_float(item_igsts[i])
+                    'item_qty': float(item_qtys[i] or 0),
+                    'item_rate': float(item_rates[i] or 0),
+                    'item_cgst': float(item_cgsts[i] or 0),
+                    'item_sgst': float(item_sgsts[i] or 0),
+                    'item_igst': float(item_igsts[i] or 0)
                 }
                 items_for_pdf.append(item)
-                cursor.execute('''
+                cur.execute('''
                     INSERT INTO invoice_items (
                         invoice_id, item_desc, item_hsn, item_qty, item_rate,
                         item_cgst, item_sgst, item_igst
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
                 ''', (
                     invoice_id, item['item_desc'], item['item_hsn'], item['item_qty'], item['item_rate'],
                     item['item_cgst'], item['item_sgst'], item['item_igst']
@@ -801,46 +778,12 @@ def generate():
 
         conn.commit()
 
-        invoice_data_for_pdf = {
-            'invoice_no': data.get('invoice_no'),
-            'invoice_date': data.get('invoice_date'),
-            'state': data.get('state'),
-            'state_code': data.get('state_code'),
-            'delivery_challan_no': data.get('delivery_challan_no'),
-            'delivery_challan_date': data.get('delivery_challan_date'),
-            'transport_mode': data.get('transport_mode'),
-            'vehicle_no': data.get('vehicle_no'),
-            'date_of_supply': data.get('date_of_supply'),
-            'place_of_supply': data.get('place_of_supply'),
-            'insurance_policy_no': data.get('insurance_policy_no'),
-            'insurance_policy_date': data.get('insurance_policy_date'),
-            'vendor_code': data.get('vendor_code'),
-            'po_no': data.get('po_no'),
-            'po_date': data.get('po_date'),
-            'invoiced_to_address': data.get('invoiced_to_address'),
-            'invoiced_state': data.get('invoiced_state'),
-            'invoiced_state_code': data.get('invoiced_state_code'),
-            'invoiced_gstin': data.get('invoiced_gstin'),
-            'consigned_to_address': data.get('consigned_to_address'),
-            'consigned_state': data.get('consigned_state'),
-            'consigned_state_code': data.get('consigned_state_code'),
-            'consigned_gstin': data.get('consigned_gstin'),
-            'items': items_for_pdf
-        }
-
-        pdf_buffer = generate_and_merge_all(output_file=None, items=items_for_pdf, invoice_data=invoice_data_for_pdf)
-
-        return send_file(
-            io.BytesIO(pdf_buffer),
-            as_attachment=True,
-            download_name=f"{data.get('invoice_no')}.pdf",
-            mimetype='application/pdf'
-        )
+        return f"Invoice {data.get('invoice_no')} saved successfully!"
 
     except Exception as e:
         if conn:
             conn.rollback()
-        return f"Error generating PDF: {str(e)}"
+        return f"Error: {str(e)}"
     finally:
         if conn:
             conn.close()
@@ -861,21 +804,25 @@ def reprint():
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        cursor.execute('SELECT * FROM invoices WHERE invoice_no = ?', (invoice_no,))
+        cursor.execute('SELECT * FROM invoices WHERE invoice_no = %s', (invoice_no,))
         invoice_data_row = cursor.fetchone()
         if not invoice_data_row:
             return render_template('reprint.html', error=f"Invoice '{invoice_no}' not found.")
 
-        columns = [col[0] for col in cursor.description]
+        columns = [desc[0] for desc in cursor.description]
         invoice_data = dict(zip(columns, invoice_data_row))
         invoice_id = invoice_data['id']
 
-        cursor.execute('SELECT * FROM invoice_items WHERE invoice_id = ?', (invoice_id,))
+        cursor.execute('SELECT * FROM invoice_items WHERE invoice_id = %s', (invoice_id,))
         item_rows = cursor.fetchall()
-        item_columns = [col[0] for col in cursor.description]
+        item_columns = [desc[0] for desc in cursor.description]
         invoice_data['items'] = [dict(zip(item_columns, row)) for row in item_rows]
 
-        pdf_buffer = generate_and_merge_all(output_file=None, items=invoice_data['items'], invoice_data=invoice_data)
+        pdf_buffer = generate_and_merge_all(
+            output_file=None,
+            items=invoice_data['items'],
+            invoice_data=invoice_data
+        )
 
         return send_file(
             io.BytesIO(pdf_buffer),
@@ -884,7 +831,7 @@ def reprint():
             mimetype='application/pdf'
         )
 
-    except pyodbc.Error as e:
+    except Exception as e:
         return render_template('reprint.html', error=f"Database error: {e}")
     finally:
         if conn:
@@ -894,4 +841,4 @@ def reprint():
 # === App Startup ===
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host="0.0.0.0", port=port)

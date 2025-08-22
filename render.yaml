@@ -1,9 +1,10 @@
 services:
   - type: web
     name: pions-invoice-app
-    env: docker
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
     plan: free
-    dockerfilePath: ./Dockerfile
     envVars:
       - key: FLASK_ENV
         value: production
@@ -11,11 +12,11 @@ services:
         value: 5000
       - key: PG_HOST
         value: dpg-d2k17gbe5dus738lv6s0-a.oregon-postgres.render.com
+      - key: PG_PORT
+        value: 5432
       - key: PG_DB
         value: invoice_db_diz8
       - key: PG_USER
         value: invoice_db_diz8_user
       - key: PG_PASS
-        sync: false   # don’t commit password, set manually in Render Dashboard
-      - key: PG_PORT
-        value: 5432
+        sync: false   # (you’ll set this in Render Dashboard → Environment)
