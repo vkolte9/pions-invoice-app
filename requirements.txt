@@ -1,6 +1,6 @@
-flask
-psycopg2-binary
-reportlab
-PyPDF2
-num2words
-python-dotenv
+Flask==2.3.3
+psycopg2-binary==2.9.8
+reportlab==4.1.1
+PyPDF2==3.1.1
+num2words==0.5.12
+python-dotenv==1.0.1
