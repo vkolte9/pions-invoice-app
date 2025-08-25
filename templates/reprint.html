@@ -22,11 +22,11 @@
             background-color: var(--background-color);
             color: var(--secondary-color);
             margin: 0;
-            padding-top: 20px;
+            padding: 20px;
+            min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: flex-start;
-            min-height: 100vh;
         }
 
         .container {
@@ -37,6 +37,7 @@
             border-radius: 8px;
             box-shadow: var(--box-shadow);
             text-align: center;
+            margin-top: 50px;
         }
 
         h2 {
@@ -70,21 +71,39 @@
             border-color: var(--accent-color);
         }
 
-        button {
+        button,
+        .btn-link {
+            display: inline-block;
             background-color: var(--accent-color);
             color: white;
             padding: 12px 24px;
             border: none;
             border-radius: 6px;
             cursor: pointer;
-            width: 100%;
             font-size: 1em;
             font-weight: 600;
             transition: background-color var(--transition-speed);
+            text-decoration: none;
+            text-align: center;
         }
 
-        button:hover {
+        button:hover,
+        .btn-link:hover {
             background-color: #92311b;
+        }
+
+        .back-button {
+            background-color: #6c757d;
+            position: fixed;
+            top: 15px;
+            left: 15px;
+            padding: 8px 16px;
+            font-size: 0.9em;
+            z-index: 1000;
+        }
+
+        .back-button:hover {
+            background-color: #5a6268;
         }
 
         .error-message {
@@ -95,15 +114,21 @@
     </style>
 </head>
 <body>
+    <!-- Back button fixed on screen -->
+    <a href="{{ url_for('index') }}" class="btn-link back-button">⬅ Home</a>
+
     <div class="container">
         <h2>Reprint Invoice</h2>
-        <form action="/reprint" method="get">
+
+        <!-- Reprint form -->
+        <form action="{{ url_for('reprint') }}" method="get">
             <div class="form-group">
                 <label for="invoice_no">Enter Invoice Number:</label>
                 <input type="text" id="invoice_no" name="invoice_no" placeholder="e.g., PTPL/2025-26/001" required>
             </div>
             <button type="submit">Fetch and Reprint</button>
         </form>
+
         {% if error %}
             <p class="error-message">{{ error }}</p>
         {% endif %}
