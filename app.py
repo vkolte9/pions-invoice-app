@@ -878,7 +878,7 @@ def generate():
 
 
 
-@app.route('/reprint', methods=['GET', 'POST'])
+@app.route('/reprint', methods=['GET'])
 def reprint():
     if request.method == 'GET':
         # Show the reprint form
