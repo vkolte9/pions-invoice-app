@@ -5,7 +5,6 @@ import psycopg2
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import mm
-from reportlab.pdfbase import pdfmetrics
 from reportlab.lib.utils import ImageReader, simpleSplit
 from reportlab.lib.colors import HexColor, black
 from reportlab.pdfbase.pdfmetrics import stringWidth
@@ -284,17 +283,27 @@ def draw_vendor_po_box(c, x, y, width, row_height=11, spacing=5, invoice_data=No
 
     return y
 
-
+def wrap_text(text, font_name, font_size, max_width):
+    """
+    Wraps text into lines that fit within max_width.
+    """
+    words = text.split()
+    lines = []
+    current_line = ""
+    for word in words:
+        test_line = current_line + (" " if current_line else "") + word
+        if stringWidth(test_line, font_name, font_size) <= max_width:
+            current_line = test_line
+        else:
+            lines.append(current_line)
+            current_line = word
+    if current_line:
+        lines.append(current_line)
+    return lines
 
 
 def draw_invoice_item_table(c, x, y, width, header_height=24, row_height=14, items=None):
     orange = HexColor("#d14000")
-
-    def safe_float(val):
-        try:
-            return float(val) if val is not None else 0.0
-        except:
-            return 0.0
 
     def format_item_value(value, value_type):
         num = safe_float(value)
@@ -311,22 +320,6 @@ def draw_invoice_item_table(c, x, y, width, header_height=24, row_height=14, ite
         num = safe_float(value)
         return f"{num:.2f}"
 
-    def wrap_text(text, font_name, font_size, max_width):
-        """Split text into lines that fit within max_width."""
-        words = text.split()
-        lines, current_line = [], ""
-        for word in words:
-            test_line = f"{current_line} {word}".strip()
-            if pdfmetrics.stringWidth(test_line, font_name, font_size) <= max_width:
-                current_line = test_line
-            else:
-                lines.append(current_line)
-                current_line = word
-        if current_line:
-            lines.append(current_line)
-        return lines
-
-    # Column widths
     column_widths = [
         7 * mm,   # NO.
         51 * mm,  # DESCRIPTION
@@ -350,7 +343,6 @@ def draw_invoice_item_table(c, x, y, width, header_height=24, row_height=14, ite
     top_line_offset = header_height * 0.3
     bottom_line_offset = header_height * 0.2
 
-    # Draw header lines
     for i in range(len(col_x)):
         c.line(col_x[i], y, col_x[i], y - table_height)
     for i in [6, 7, 8]:
@@ -360,7 +352,6 @@ def draw_invoice_item_table(c, x, y, width, header_height=24, row_height=14, ite
     c.line(x, y, col_x[-1], y)
     c.line(x, y - header_height, col_x[-1], y - header_height)
 
-    # Header text
     c.setFont("Helvetica-Bold", 6.5)
     c.setFillColor(orange)
     c.drawCentredString((col_x[0] + col_x[1]) / 2, header_top_y - top_line_offset, "SR.")
@@ -385,65 +376,72 @@ def draw_invoice_item_table(c, x, y, width, header_height=24, row_height=14, ite
         c.drawCentredString((left + mid) / 2, header_bottom_y + bottom_line_offset, "RATE OF %")
         c.drawCentredString((mid + right) / 2, header_bottom_y + bottom_line_offset, "AMOUNT")
 
-    # Start drawing items
     c.setFillColor(black)
     items = items or []
-    total_taxable = total_cgst_amt = total_sgst_amt = total_igst_amt = 0.0
-    current_y = y - header_height - 12  # start below header
+    total_taxable = 0.0
+    total_cgst_amt = 0.0
+    total_sgst_amt = 0.0
+    total_igst_amt = 0.0
+    current_y = y - header_height - 12
 
-    for i, item in enumerate(items[:total_data_rows]):
-        desc = (item.get("item_desc") or "").strip()
-        qty = safe_float(item.get("item_qty"))
-        rate = safe_float(item.get("item_rate"))
-        cgst = safe_float(item.get("item_cgst"))
-        sgst = safe_float(item.get("item_sgst"))
-        igst = safe_float(item.get("item_igst"))
+    for i in range(total_data_rows):
+        if i < len(items):
+            item = items[i]
+            desc = (item.get("item_desc") or "").strip()
+            qty = safe_float(item.get("item_qty"))
+            rate = safe_float(item.get("item_rate"))
+            cgst = safe_float(item.get("item_cgst"))
+            sgst = safe_float(item.get("item_sgst"))
+            igst = safe_float(item.get("item_igst"))
 
-        taxable = qty * rate
-        cgst_amt = taxable * cgst / 100
-        sgst_amt = taxable * sgst / 100
-        igst_amt = taxable * igst / 100
+            taxable = qty * rate
+            cgst_amt = taxable * cgst / 100
+            sgst_amt = taxable * sgst / 100
+            igst_amt = taxable * igst / 100
 
-        total_taxable += taxable
-        total_cgst_amt += cgst_amt
-        total_sgst_amt += sgst_amt
-        total_igst_amt += igst_amt
+            total_taxable += taxable
+            total_cgst_amt += cgst_amt
+            total_sgst_amt += sgst_amt
+            total_igst_amt += igst_amt
 
-        # Wrap description text
-        desc_lines = wrap_text(desc, "Helvetica-Oblique", 6.8, column_widths[1] - 4)
-        line_height = 10
-        row_height_used = max(row_height, len(desc_lines) * line_height)
+            # Wrap description text
+            desc_lines = wrap_text(desc, "Helvetica-Oblique", 6.8, column_widths[1] - 4)
+            required_height = max(row_height, len(desc_lines) * 8)  # Adjust row height
 
-        # Draw SR. NO
-        c.setFont("Helvetica", 7)
-        c.drawRightString(col_x[0] + column_widths[0] - 2, current_y, str(i + 1))
+            # Draw SR. NO.
+            c.setFont("Helvetica", 7)
+            c.drawRightString(col_x[0] + column_widths[0] - 2, current_y, str(i + 1))
 
-        # Draw DESCRIPTION
-        c.setFont("Helvetica-Oblique", 6.8)
-        text_obj = c.beginText()
-        text_obj.setTextOrigin(col_x[1] + 2, current_y)
-        for line in desc_lines:
-            text_obj.textLine(line)
-        c.drawText(text_obj)
+            # Draw DESCRIPTION
+            c.setFont("Helvetica-Oblique", 6.8)
+            text_obj = c.beginText()
+            text_obj.setTextOrigin(col_x[1] + 2, current_y)
+            for line in desc_lines:
+                text_obj.textLine(line)
+            c.drawText(text_obj)
 
-        # Draw numeric values (right aligned)
-        c.setFont("Helvetica-Oblique", 7)
-        c.drawRightString(col_x[2] + column_widths[2] - 2, current_y, format_item_value(item.get("item_hsn", ""), 'hsn'))
-        c.drawRightString(col_x[3] + column_widths[3] - 2, current_y, format_item_value(qty, 'qty'))
-        c.drawRightString(col_x[4] + column_widths[4] - 2, current_y, format_item_value(rate, 'rate'))
-        c.drawRightString(col_x[5] + column_widths[5] - 2, current_y, format_item_value(taxable, 'amount'))
-        c.drawRightString(col_x[6] + column_widths[6] / 2 - 2, current_y, format_item_value(cgst, 'percentage'))
-        c.drawRightString(col_x[6] + column_widths[6] - 2, current_y, format_item_value(cgst_amt, 'amount'))
-        c.drawRightString(col_x[7] + column_widths[7] / 2 - 2, current_y, format_item_value(sgst, 'percentage'))
-        c.drawRightString(col_x[7] + column_widths[7] - 2, current_y, format_item_value(sgst_amt, 'amount'))
-        c.drawRightString(col_x[8] + column_widths[8] / 2 - 2, current_y, format_item_value(igst, 'percentage'))
-        c.drawRightString(col_x[8] + column_widths[8] - 2, current_y, format_item_value(igst_amt, 'amount'))
+            # Draw other values
+            c.setFont("Helvetica-Oblique", 7)
+            c.drawRightString(col_x[2] + column_widths[2] - 2, current_y,
+                              format_item_value(item.get("item_hsn", ""), 'hsn'))
+            c.drawRightString(col_x[3] + column_widths[3] - 2, current_y, format_item_value(qty, 'qty'))
+            c.drawRightString(col_x[4] + column_widths[4] - 2, current_y, format_item_value(rate, 'rate'))
+            c.drawRightString(col_x[5] + column_widths[5] - 2, current_y, format_item_value(taxable, 'amount'))
+            c.drawRightString(col_x[6] + column_widths[6] / 2 - 2, current_y, format_item_value(cgst, 'percentage'))
+            c.drawRightString(col_x[6] + column_widths[6] - 2, current_y, format_item_value(cgst_amt, 'amount'))
+            c.drawRightString(col_x[7] + column_widths[7] / 2 - 2, current_y, format_item_value(sgst, 'percentage'))
+            c.drawRightString(col_x[7] + column_widths[7] - 2, current_y, format_item_value(sgst_amt, 'amount'))
+            c.drawRightString(col_x[8] + column_widths[8] / 2 - 2, current_y, format_item_value(igst, 'percentage'))
+            c.drawRightString(col_x[8] + column_widths[8] - 2, current_y, format_item_value(igst_amt, 'amount'))
 
-        # Move pointer down for next row
-        current_y -= row_height_used
+            # Move down based on wrapped text
+            current_y -= required_height
+        else:
+            # Empty rows
+            current_y -= row_height
 
-    # Totals row
-    total_row_top_y = current_y
+        # --- TOTAL ROW FIXED AS IS ---
+    total_row_top_y = y - header_height - (row_height * total_data_rows)
     total_row_bottom_y = total_row_top_y - row_height
     c.line(x, total_row_top_y, col_x[-1], total_row_top_y)
     label_y = (total_row_top_y + total_row_bottom_y) / 2 - 2
@@ -464,7 +462,6 @@ def draw_invoice_item_table(c, x, y, width, header_height=24, row_height=14, ite
         "sgst_amt": total_sgst_amt,
         "igst_amt": total_igst_amt
     }
-
 
 
 def draw_three_column_box(c, x, y, width, total_taxable, total_cgst_amt, total_sgst_amt, total_igst_amt):
@@ -875,56 +872,56 @@ def generate():
         logger.exception("Error generating invoice")
         return f"Error generating invoice: {str(e)}", 500
 
-
+@app.route("/reprint_page")
+def reprint_page():
+    return render_template("reprint.html")
 
 
 @app.route('/reprint', methods=['GET'])
 def reprint():
-    if request.method == 'GET':
-        # Show the reprint form
-        return render_template('reprint.html')
-
-    invoice_no = request.form.get('invoice_no')
+    invoice_no = request.args.get('invoice_no')
     if not invoice_no:
-        return render_template('reprint.html', error="Please provide an Invoice Number.")
+        return render_template('reprint.html', error="Please enter an invoice number.")
 
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT * FROM invoices WHERE invoice_no=%s", (invoice_no,))
+                # Get invoice
+                cur.execute("SELECT * FROM invoices WHERE invoice_no = %s", (invoice_no,))
                 row = cur.fetchone()
                 if not row:
-                    return render_template('reprint.html', error=f"Invoice '{invoice_no}' not found.")
+                    return render_template('reprint.html', error="Invoice not found in database.")
 
                 columns = [desc[0] for desc in cur.description]
                 invoice_data = dict(zip(columns, row))
+                invoice_id = invoice_data['id']
 
-                # Convert all values to string for ReportLab
-                invoice_data = {k: ("" if v is None else str(v)) for k, v in invoice_data.items()}
-                invoice_id = invoice_data["id"]
-
-                # Fetch items
-                cur.execute("SELECT item_desc, item_hsn, item_qty, item_rate, item_cgst, item_sgst, item_igst FROM invoice_items WHERE invoice_id=%s", (invoice_id,))
+                # Get items
+                cur.execute("SELECT * FROM invoice_items WHERE invoice_id = %s", (invoice_id,))
                 item_rows = cur.fetchall()
                 item_columns = [desc[0] for desc in cur.description]
-                items_for_pdf = [dict(zip(item_columns, r)) for r in item_rows]
+                items = [dict(zip(item_columns, r)) for r in item_rows]
 
+        # Add items into invoice_data
+        invoice_data["items"] = items
+
+        # Generate PDF (same function as /generate)
+        # In reprint()
         pdf_bytes = generate_and_merge_all(
             output_file=None,
-            items=items_for_pdf,
+            items=invoice_data["items"],
             invoice_data=invoice_data
         )
 
         return send_file(
             io.BytesIO(pdf_bytes),
             as_attachment=True,
-            download_name=f"{invoice_no}.pdf",
+            download_name=f"{invoice_no.replace('/', '_')}.pdf",
             mimetype="application/pdf"
         )
 
     except Exception as e:
-        logger.exception("Error reprinting invoice")
-        return render_template('reprint.html', error=f"Database error: {str(e)}")
+        return render_template('reprint.html', error=f"Error generating invoice: {str(e)}")
 
 
 
