@@ -19,4 +19,4 @@ services:
       - key: PG_USER
         value: invoice_db_diz8_user
       - key: PG_PASS
-        sync: false   # (you’ll set this in Render Dashboard → Environment)
+        sync: false   # set manually in Render Dashboard
