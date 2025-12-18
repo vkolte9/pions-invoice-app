@@ -1,22 +1,13 @@
 services:
   - type: web
     name: pions-invoice-app
-    env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python app.py
+    env: docker  # Use the Dockerfile!
     plan: free
+    healthCheckPath: /  # Tells Render to wait until the app responds
     envVars:
       - key: FLASK_ENV
         value: production
       - key: PORT
         value: 5000
-      - key: PG_HOST
-        value: dpg-d2k17gbe5dus738lv6s0-a.oregon-postgres.render.com
-      - key: PG_PORT
-        value: 5432
-      - key: PG_DB
-        value: invoice_db_diz8
-      - key: PG_USER
-        value: invoice_db_diz8_user
-      - key: PG_PASS
-        sync: false   # set manually in Render Dashboard
+      # DELETE PG_HOST, PG_DB, PG_USER, and PG_PASS from this file.
+      # You MUST set these in the Render Dashboard UI for security.
