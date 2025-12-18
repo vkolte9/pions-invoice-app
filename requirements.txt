@@ -1,6 +1,8 @@
 flask
-psycopg2-binary
+psycopg2
 reportlab
 PyPDF2
 num2words
 python-dotenv
+gunicorn
+jinja2
