@@ -925,19 +925,12 @@ def reprint():
 
 
 
-# Replace your current init_db() call and startup block with this:
-
 if __name__ == "__main__":
-    # Move database init here so it only runs when the script starts, 
-    # and wrap it so a single failure doesn't kill the whole process.
+    # Attempt to init the DB, but don't let a timeout kill the process
     try:
-        logger.info("Initializing database...")
         init_db()
-        logger.info("Database initialized successfully.")
     except Exception as e:
-        logger.error(f"Database initialization failed: {e}")
-        # We don't exit(1) here because we want the Flask app to at least 
-        # try to start so you can see errors in the logs.
+        print(f"Database not ready: {e}. Moving to app startup...")
 
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
