@@ -1,13 +1,12 @@
 services:
   - type: web
     name: pions-invoice-app
-    env: docker  # Use the Dockerfile!
+    env: docker  # This forces Render to use your Dockerfile
     plan: free
-    healthCheckPath: /  # Tells Render to wait until the app responds
+    healthCheckPath: /
     envVars:
       - key: FLASK_ENV
         value: production
       - key: PORT
         value: 5000
-      # DELETE PG_HOST, PG_DB, PG_USER, and PG_PASS from this file.
-      # You MUST set these in the Render Dashboard UI for security.
+      # NO PASSWORDS HERE. We will add them in the UI.
